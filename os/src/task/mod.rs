@@ -14,6 +14,9 @@ mod switch;
 #[allow(clippy::module_inception)]
 mod task;
 
+extern crate alloc;
+use alloc::{collections::BTreeMap, vec::Vec};
+
 use crate::config::MAX_APP_NUM;
 use crate::loader::{get_num_app, init_app_cx};
 use crate::sync::UPSafeCell;
@@ -45,6 +48,8 @@ pub struct TaskManagerInner {
     tasks: [TaskControlBlock; MAX_APP_NUM],
     /// id of current `Running` task
     current_task: usize,
+    /// per-task syscall type counters (task_id -> {syscall_id -> count})
+    syscall_type_counts: Vec<BTreeMap<usize, usize>>,
 }
 
 lazy_static! {
@@ -65,6 +70,7 @@ lazy_static! {
                 UPSafeCell::new(TaskManagerInner {
                     tasks,
                     current_task: 0,
+                    syscall_type_counts: (0..MAX_APP_NUM).map(|_| BTreeMap::new()).collect(),
                 })
             },
         }
@@ -135,6 +141,7 @@ impl TaskManager {
             panic!("All applications completed!");
         }
     }
+
 }
 
 /// Run the first task in task list.
@@ -169,3 +176,28 @@ pub fn exit_current_and_run_next() {
     mark_current_exited();
     run_next_task();
 }
+
+
+/// get id of current `Running` task
+pub fn current_task() -> usize {
+    TASK_MANAGER.inner.exclusive_access().current_task
+}
+
+/// increase syscall type counter
+pub fn incr_syscall_type(syscall_id: usize) {
+    let mut inner = TASK_MANAGER.inner.exclusive_access();
+    let task_id = inner.current_task;
+    let entry = &mut inner.syscall_type_counts[task_id];
+    *entry.entry(syscall_id).or_insert(0) += 1;
+}
+
+/// get syscall type count
+pub fn get_syscall_type_count(syscall_id: usize) -> usize {
+    let inner = TASK_MANAGER.inner.exclusive_access();
+    let task_id = inner.current_task;
+    inner.syscall_type_counts[task_id]
+        .get(&syscall_id)
+        .copied()
+        .unwrap_or(0)
+}
+

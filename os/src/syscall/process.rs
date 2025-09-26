@@ -1,4 +1,7 @@
 //! Process management syscalls
+#![allow(unused_imports)]
+use core::array::try_from_fn;
+
 use crate::{
     task::{exit_current_and_run_next, suspend_current_and_run_next},
     timer::get_time_us,
@@ -38,8 +41,39 @@ pub fn sys_get_time(ts: *mut TimeVal, _tz: usize) -> isize {
     0
 }
 
-// TODO: implement the syscall
-pub fn sys_trace(_trace_request: usize, _id: usize, _data: usize) -> isize {
-    trace!("kernel: sys_trace");
-    -1
+// tracing / stats syscall
+// request semantics:
+// 0 -> read memory at address (arg1)
+// 1 -> write memory at address (arg1) with value (arg2)
+// 2 -> return syscall count of given syscall type (arg1), including this call
+pub fn sys_trace(trace_request: usize, id: usize, data: usize) -> isize {
+    trace!("kernel: sys_trace request={} id={}", trace_request, id);
+    
+    // 先统计 SYSCALL_TRACE 的调用次数
+    crate::task::incr_syscall_type(410); // SYSCALL_TRACE = 410
+    
+    match trace_request {
+        0 => {
+            // read memory
+            let addr = id as *const u8;
+            unsafe { core::ptr::read_volatile(addr) as isize }
+        }
+        1 => {
+            // write memory
+            let addr = id as *mut u8;
+            unsafe { core::ptr::write_volatile(addr, data as u8); }
+            0
+        }
+        2 => {
+            // syscall type count (including this call)
+            let count = crate::task::get_syscall_type_count(id);
+            // 临时调试：检查统计是否正确
+            if id == 64 { // SYSCALL_WRITE
+                // 使用 trace! 而不是 println! 来避免触发 sys_write
+                trace!("DEBUG: SYSCALL_WRITE count = {}", count);
+            }
+            count as isize
+        }
+        _ => -1,
+    }
 }
