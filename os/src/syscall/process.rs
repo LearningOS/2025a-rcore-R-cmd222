@@ -50,7 +50,6 @@ pub fn sys_trace(trace_request: usize, id: usize, data: usize) -> isize {
     trace!("kernel: sys_trace request={} id={}", trace_request, id);
     
     // 先统计 SYSCALL_TRACE 的调用次数
-    crate::task::incr_syscall_type(410); // SYSCALL_TRACE = 410
     
     match trace_request {
         0 => {
@@ -66,12 +65,8 @@ pub fn sys_trace(trace_request: usize, id: usize, data: usize) -> isize {
         }
         2 => {
             // syscall type count (including this call)
+            crate::task::incr_syscall_type(410); // SYSCALL_TRACE = 410
             let count = crate::task::get_syscall_type_count(id);
-            // 临时调试：检查统计是否正确
-            if id == 64 { // SYSCALL_WRITE
-                // 使用 trace! 而不是 println! 来避免触发 sys_write
-                trace!("DEBUG: SYSCALL_WRITE count = {}", count);
-            }
             count as isize
         }
         _ => -1,
